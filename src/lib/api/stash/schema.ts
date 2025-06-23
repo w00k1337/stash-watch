@@ -60,16 +60,13 @@ export const cupSizeSchema = z.enum([
 export const measurementsSchema = z
   .object({
     bust: z.number().int().positive().optional(),
-    cup: cupSizeSchema.optional(),
+    cup: cupSizeSchema,
     waist: z.number().int().positive().optional(),
     hips: z.number().int().positive().optional()
   })
-  .refine(
-    data => data.bust !== undefined || data.cup !== undefined || data.waist !== undefined || data.hips !== undefined,
-    {
-      message: 'At least one measurement (bust, cup, waist, or hips) must be provided'
-    }
-  )
+  .refine(data => data.bust !== undefined || data.waist !== undefined || data.hips !== undefined, {
+    message: 'At least one measurement (bust, cup, waist, or hips) must be provided'
+  })
 
 export const measurementsResponseSchema = z
   .string()
@@ -160,5 +157,6 @@ export const sceneSchema = z.object({
   releasedAt: z.coerce.date()
 })
 
+export type Measurements = z.infer<typeof measurementsSchema>
 export type Scene = z.infer<typeof sceneSchema>
 export type Performer = z.infer<typeof performerSchema>

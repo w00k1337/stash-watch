@@ -1,18 +1,15 @@
-import { env } from '@/env/server'
-import { graphql } from '@/generated/stashdb'
-import { CriterionModifier, QueryScenesQuery, QueryScenesQueryVariables } from '@/generated/stashdb/graphql'
+import { getPerformerScenes as getPerformerScenesApi } from '@/generated/theporndb/sdk.gen'
 import logger from '@/lib/logger'
 
-import { fetchGraphQL } from '../common/utils'
 import { Scene, sceneSchema } from './schema'
 
-export class StashDBError extends Error {
+export class ThePornDBError extends Error {
   constructor(
     message: string,
     public readonly cause?: unknown
   ) {
     super(message)
-    this.name = 'StashDBError'
+    this.name = 'ThePornDBError'
   }
 }
 
@@ -33,32 +30,8 @@ export const getPerformerScenes = async (
       pageSize,
       rateLimitDelay
     },
-    'Starting to fetch performer scenes from StashDB'
+    'Starting to fetch performer scenes from ThePornDB'
   )
-
-  const query = graphql(`
-    query QueryScenes($input: SceneQueryInput!) {
-      queryScenes(input: $input) {
-        count
-        scenes {
-          id
-          title
-          releasedAt: release_date
-          images {
-            id
-            url
-            width
-            height
-          }
-          fingerprints {
-            hash
-            algorithm
-            duration
-          }
-        }
-      }
-    }
-  `)
 
   const scenes: Scene[] = []
   let currentPage = 1
@@ -73,24 +46,18 @@ export const getPerformerScenes = async (
           totalPages,
           scenesCount: scenes.length
         },
-        'Fetching performer scenes page from StashDB'
+        'Fetching performer scenes page'
       )
 
-      const { queryScenes } = await fetchGraphQL<QueryScenesQuery, QueryScenesQueryVariables>({
-        apiBaseUrl: env.STASHDB_BASE_URL,
-        apiKey: env.STASHDB_API_KEY,
-        query,
-        variables: {
-          input: {
-            performers: { value: [performerId], modifier: CriterionModifier.Includes },
-            per_page: pageSize,
-            page: currentPage
-          }
+      const { data } = await getPerformerScenesApi({
+        path: { identifier: performerId },
+        query: {
+          page: currentPage,
+          per_page: pageSize
         }
       })
 
-      totalPages = Math.ceil(queryScenes.count / pageSize)
-      const pageScenes = queryScenes.scenes.map(scene => sceneSchema.parse(scene))
+      const pageScenes = data?.data?.map(scene => sceneSchema.parse(scene)) ?? []
       scenes.push(...pageScenes)
 
       logger.debug(
@@ -100,20 +67,22 @@ export const getPerformerScenes = async (
           totalPages,
           pageScenesCount: pageScenes.length,
           totalScenesCount: scenes.length,
-          totalFromResponse: queryScenes.count
+          hasData: !!data?.data,
+          totalFromMeta: data?.meta?.total
         },
-        'Received performer scenes page response from StashDB'
+        'Received performer scenes page response'
       )
 
-      // Update total pages on first page if we have a count
-      if (currentPage === 1 && queryScenes.count) {
+      // Update total pages based on the response
+      if (currentPage === 1 && data?.meta?.total) {
+        totalPages = Math.ceil(data.meta.total / pageSize)
         logger.debug(
           {
             performerId,
-            totalScenes: queryScenes.count,
+            totalScenes: data.meta.total,
             calculatedTotalPages: totalPages
           },
-          'Updated total pages from first StashDB response'
+          'Updated total pages from first response from ThePornDB'
         )
       }
 
@@ -125,7 +94,7 @@ export const getPerformerScenes = async (
             nextPage: currentPage,
             delayMs: rateLimitDelay
           },
-          'Applying rate limit delay before next StashDB request'
+          'Applying rate limit delay before next request'
         )
         await new Promise(resolve => setTimeout(resolve, rateLimitDelay))
       }
@@ -137,7 +106,7 @@ export const getPerformerScenes = async (
         totalScenes: scenes.length,
         totalPages: currentPage - 1
       },
-      'Successfully fetched all performer scenes from StashDB'
+      'Successfully fetched all performer scenes from ThePornDB'
     )
 
     return scenes
@@ -151,8 +120,8 @@ export const getPerformerScenes = async (
         error: error instanceof Error ? error.message : 'Unknown error',
         errorStack: error instanceof Error ? error.stack : undefined
       },
-      'Failed to fetch performer scenes from StashDB'
+      'Failed to fetch performer scenes from ThePornDB'
     )
-    throw new StashDBError('Failed to fetch performer scenes', error)
+    throw new ThePornDBError('Failed to fetch performer scenes', error)
   }
 }
