@@ -13,5 +13,4 @@ const RootLayout = ({ children }: RootLayoutProps): ReactElement => {
     </html>
   )
 }
-
 export default RootLayout

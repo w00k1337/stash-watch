@@ -1,13 +1,6 @@
 import { z } from 'zod'
 
-// Helper function to validate country code
-const isValidCountryCode = (code: string): boolean => {
-  try {
-    return new Intl.Locale('en', { region: code }).maximize().region === code
-  } catch {
-    return false
-  }
-}
+import { isValidCountryCode } from '@/lib/utils'
 
 export const breastTypeSchema = z.enum(['Fake', 'Natural'])
 export const fingerprintTypeSchema = z.enum(['oshash', 'phash'])

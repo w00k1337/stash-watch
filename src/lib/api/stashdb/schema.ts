@@ -18,9 +18,10 @@ export const hashSchema = z.object({
 export const sceneSchema = z.object({
   id: z.string().uuid(),
   title: z.string().optional(),
-  releasedAt: z.coerce.date().optional(),
+  releasedAt: z.coerce.date(),
   images: z.array(imageSchema),
   fingerprints: z.array(hashSchema)
 })
 
 export type Scene = z.infer<typeof sceneSchema>
+export type HashAlgorithm = z.infer<typeof hashAlgorithmSchema>

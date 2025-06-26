@@ -9,7 +9,7 @@ interface PerformerPageProps {
 const PerformerPage = async ({ params }: PerformerPageProps): Promise<ReactElement> => {
   const { slug } = await params
 
-  const performer = await prisma.performer.findUnique({ where: { slug } })
+  const performer = await prisma.performer.findUnique({ where: { slug }, include: { scenes: true } })
   if (!performer) return <div>Performer not found</div>
 
   const { name } = performer

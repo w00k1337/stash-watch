@@ -4,11 +4,7 @@ import { ReactElement } from 'react'
 import prisma from '@/lib/prisma'
 
 const PerformersPage = async (): Promise<ReactElement> => {
-  const performers = await prisma.performer.findMany({
-    orderBy: {
-      name: 'asc'
-    }
-  })
+  const performers = await prisma.performer.findMany({ orderBy: { name: 'asc' } })
 
   return (
     <div>
