@@ -10,16 +10,12 @@ export interface PerformerImportJobData {
  * Result of a performer import job operation
  */
 export interface PerformerImportJobResult {
-  /** Whether the import operation was successful */
-  success: boolean
-  /** The local database ID of the imported performer (if successful) */
-  performerId?: number
+  /** The local database ID of the imported performer */
+  performerId: number
   /** The original Stash ID of the performer */
   performerStashId?: number
   /** The name of the performer (if available) */
   performerName?: string
-  /** Error message if the import failed */
-  error?: string
 }
 
 /**
@@ -63,12 +59,8 @@ export type ScenesImportJobData = StashDbScenesImportJobData | PornDbScenesImpor
  * Result of a scenes import job operation
  */
 export interface ScenesImportJobResult {
-  /** Whether the import operation was successful */
-  success: boolean
   /** Total number of scenes found for the performer */
   totalScenes?: number
   /** Number of scenes successfully imported */
   totalScenesImported?: number
-  /** Error message if the import failed */
-  error?: string
 }

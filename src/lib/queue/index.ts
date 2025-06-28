@@ -1,4 +1,4 @@
-import { ConnectionOptions, Job, Queue, Worker } from 'bullmq'
+import { ConnectionOptions, Job, Queue, QueueEvents, Worker } from 'bullmq'
 
 import logger from '@/lib/logger'
 
@@ -11,6 +11,8 @@ class QueueManager {
   private performerImportWorker!: Worker<PerformerImportJobData, PerformerImportJobResult>
   private scenesImportQueue!: Queue<ScenesImportJobData, ScenesImportJobResult>
   private scenesImportWorker!: Worker<ScenesImportJobData, ScenesImportJobResult>
+  private performerImportQueueEvents!: QueueEvents
+  private scenesImportQueueEvents!: QueueEvents
   private isInitialized = false
 
   constructor(options: ConnectionOptions) {
@@ -25,13 +27,30 @@ class QueueManager {
 
     logger.info('Initializing QueueManager')
 
+    const defaultJobOptions = {
+      attempts: 3,
+      backoff: {
+        type: 'exponential',
+        delay: 2000
+      },
+      removeOnComplete: 100,
+      removeOnFail: 50
+    }
+
     // Create queues
     this.performerImportQueue = new Queue('performer-import', {
-      connection: this.options
+      connection: this.options,
+      defaultJobOptions
     })
+
     this.scenesImportQueue = new Queue('scenes-import', {
-      connection: this.options
+      connection: this.options,
+      defaultJobOptions
     })
+
+    // Create queue events
+    this.performerImportQueueEvents = new QueueEvents(this.performerImportQueue.name, { connection: this.options })
+    this.scenesImportQueueEvents = new QueueEvents(this.scenesImportQueue.name, { connection: this.options })
 
     // Create workers
     this.performerImportWorker = new Worker(this.performerImportQueue.name, processPerformerImport, {
@@ -45,47 +64,18 @@ class QueueManager {
     })
 
     // Set up event handlers
-    this.setupEventHandlers()
+    this.performerImportQueueEvents.on('completed', (jobId, result) => {
+      logger.info({ jobId, result }, 'Job completed')
+    })
+    this.performerImportQueueEvents.on('failed', (jobId, error) => {
+      logger.error({ jobId, error }, 'Job failed')
+    })
 
     // Wait a moment to ensure connections are established
     await new Promise(resolve => setTimeout(resolve, 100))
 
     this.isInitialized = true
     logger.info('QueueManager initialized successfully')
-  }
-
-  private setupEventHandlers(): void {
-    // Performer import worker events
-    this.performerImportWorker.on('completed', (job, result) => {
-      logger.info({ jobId: job.id, result }, 'Imported performer from Stash')
-    })
-
-    this.performerImportWorker.on('failed', (job, error) => {
-      logger.error(
-        { jobId: job?.id, performerStashId: job?.data.performerStashId, error },
-        'Failed to import performer from Stash'
-      )
-    })
-
-    this.performerImportWorker.on('error', error => {
-      logger.error({ error }, 'Performer import worker error')
-    })
-
-    // Scenes import worker events
-    this.scenesImportWorker.on('completed', (job, result) => {
-      logger.info({ jobId: job.id, result }, 'Imported scenes from Stash')
-    })
-
-    this.scenesImportWorker.on('failed', (job, error) => {
-      logger.error(
-        { jobId: job?.id, performerId: job?.data.performerId, error: error.message },
-        'Failed to import scenes from Stash'
-      )
-    })
-
-    this.scenesImportWorker.on('error', error => {
-      logger.error({ error }, 'Scenes import worker error')
-    })
   }
 
   async close(): Promise<void> {
@@ -101,7 +91,12 @@ class QueueManager {
       await Promise.all([this.performerImportWorker.close(), this.scenesImportWorker.close()])
 
       // Close queues
-      await Promise.all([this.performerImportQueue.close(), this.scenesImportQueue.close()])
+      await Promise.all([
+        this.performerImportQueue.close(),
+        this.scenesImportQueue.close(),
+        this.performerImportQueueEvents.close(),
+        this.scenesImportQueueEvents.close()
+      ])
 
       this.isInitialized = false
       logger.info('QueueManager closed successfully')
@@ -120,19 +115,7 @@ class QueueManager {
 
     logger.debug({ performerStashId }, 'Adding performer import job')
 
-    const job = await this.performerImportQueue.add(
-      'performer-import',
-      { performerStashId },
-      {
-        attempts: 3,
-        backoff: {
-          type: 'exponential',
-          delay: 2000
-        },
-        removeOnComplete: 100,
-        removeOnFail: 50
-      }
-    )
+    const job = await this.performerImportQueue.add('performer-import', { performerStashId })
 
     logger.debug({ jobId: job.id }, 'Performer import job added')
     return job
@@ -145,15 +128,7 @@ class QueueManager {
 
     logger.debug({ data }, 'Adding scenes import job')
 
-    const job = await this.scenesImportQueue.add('scenes-import', data, {
-      attempts: 3,
-      backoff: {
-        type: 'exponential',
-        delay: 2000
-      },
-      removeOnComplete: 100,
-      removeOnFail: 50
-    })
+    const job = await this.scenesImportQueue.add('scenes-import', data)
 
     logger.debug({ jobId: job.id }, 'Scenes import job added')
     return job

@@ -60,5 +60,24 @@ describe('Country utilities', () => {
       expect(() => convertCountry('XX', { strict: true })).toThrow('Invalid country code: "XX"')
       expect(() => convertCountry('', { strict: true })).toThrow('Country code cannot be empty or null')
     })
+
+    it('should handle non-string inputs gracefully', () => {
+      expect(convertCountry(123, { returnOriginal: true })).toBe('123')
+      expect(convertCountry(null, { returnOriginal: true })).toBe('')
+      expect(convertCountry(undefined, { returnOriginal: true })).toBe('')
+      expect(convertCountry({}, { returnOriginal: true })).toBe('[object Object]')
+    })
+
+    it('should throw error in strict mode for non-string inputs', () => {
+      expect(() => convertCountry(123, { strict: true })).toThrow('Country code must be a string, got number')
+      expect(() => convertCountry(null, { strict: true })).toThrow('Country code cannot be empty or null')
+      expect(() => convertCountry({}, { strict: true })).toThrow('Country code must be a string, got object')
+    })
+
+    it('should return undefined for non-string inputs when returnOriginal is false', () => {
+      expect(convertCountry(123, { returnOriginal: false })).toBeUndefined()
+      expect(convertCountry(null, { returnOriginal: false })).toBeUndefined()
+      expect(convertCountry({}, { returnOriginal: false })).toBeUndefined()
+    })
   })
 })

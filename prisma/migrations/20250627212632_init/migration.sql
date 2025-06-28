@@ -29,7 +29,6 @@ CREATE TABLE "Performer" (
     "bandSize" INTEGER,
     "hasNaturalBreasts" BOOLEAN,
     "birthdate" TIMESTAMP(3),
-    "countryId" INTEGER,
     "country" "Country",
     "isFavorite" BOOLEAN NOT NULL DEFAULT false,
     "isMonitored" BOOLEAN NOT NULL DEFAULT false,

@@ -36,24 +36,26 @@ export interface BandSizeConversionOptions {
  * Valid US band sizes array
  */
 const VALID_US_BAND_SIZES: USBandSize[] = [28, 30, 32, 34, 36, 38, 40, 42, 44, 46]
+const VALID_US_BAND_SIZES_SET = new Set(VALID_US_BAND_SIZES)
 
 /**
  * Valid European band sizes array
  */
 const VALID_EUROPEAN_BAND_SIZES: EuropeanBandSize[] = [65, 70, 75, 80, 85, 90, 95, 100, 105, 110, 115, 120]
+const VALID_EUROPEAN_BAND_SIZES_SET = new Set(VALID_EUROPEAN_BAND_SIZES)
 
 /**
  * Validates if a number is a valid US band size
  */
 export const isValidUSBandSize = (band: number): band is USBandSize => {
-  return VALID_US_BAND_SIZES.includes(band as USBandSize)
+  return VALID_US_BAND_SIZES_SET.has(band as USBandSize)
 }
 
 /**
  * Validates if a number is a valid European band size
  */
 export const isValidEuropeanBandSize = (band: number): band is EuropeanBandSize => {
-  return VALID_EUROPEAN_BAND_SIZES.includes(band as EuropeanBandSize)
+  return VALID_EUROPEAN_BAND_SIZES_SET.has(band as EuropeanBandSize)
 }
 
 /**
@@ -90,7 +92,7 @@ export const convertUSBandToEuropean = (usBand: number, options: BandSizeConvers
 
   // Check if it's a valid US band size
   if (isValidUSBandSize(usBand)) {
-    const europeanBand = 70 + (usBand - 32) * 2.5
+    const europeanBand = Math.round(70 + (usBand - 32) * 2.5)
     return roundToValid ? findNearestEuropeanBandSize(europeanBand) : europeanBand
   }
 
@@ -126,7 +128,7 @@ export const convertEuropeanBandToUS = (euBand: number, options: BandSizeConvers
 
   // Check if it's a valid European band size
   if (isValidEuropeanBandSize(euBand)) {
-    const usBand = 32 + (euBand - 70) / 2.5
+    const usBand = Math.round(32 + (euBand - 70) / 2.5)
     return roundToValid ? findNearestUSBandSize(usBand) : usBand
   }
 
