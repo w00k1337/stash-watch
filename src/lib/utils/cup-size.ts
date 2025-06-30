@@ -1,4 +1,4 @@
-import { CupSize as PrismaCupSize } from '@/generated/prisma'
+import { CupSize } from '@/generated/prisma'
 
 /**
  * Converts various cup size formats to Prisma cup size format
@@ -20,7 +20,7 @@ import { CupSize as PrismaCupSize } from '@/generated/prisma'
  * convertToPrismaCupSize("A") // returns "A"
  * ```
  */
-export const convertToPrismaCupSize = (cupSize: string): PrismaCupSize | undefined => {
+export const convertToCupSize = (cupSize: string): CupSize | undefined => {
   if (!cupSize || typeof cupSize !== 'string') return undefined
 
   const normalized = cupSize.trim().toUpperCase()
@@ -28,7 +28,7 @@ export const convertToPrismaCupSize = (cupSize: string): PrismaCupSize | undefin
 
   // Single letter (no conversion needed)
   if (normalized.length === 1) {
-    return normalized as PrismaCupSize
+    return normalized as CupSize
   }
 
   // Double letters convert to next letter
@@ -38,9 +38,9 @@ export const convertToPrismaCupSize = (cupSize: string): PrismaCupSize | undefin
     const charCode = letter.charCodeAt(0)
     if (charCode >= 65 && charCode < 90) {
       // A-Y
-      return String.fromCharCode(charCode + 1) as PrismaCupSize
+      return String.fromCharCode(charCode + 1) as CupSize
     }
-    return 'Z' as PrismaCupSize // Z is the maximum
+    return 'Z' as CupSize // Z is the maximum
   }
 
   // Triple letters convert to letter after next
@@ -50,9 +50,9 @@ export const convertToPrismaCupSize = (cupSize: string): PrismaCupSize | undefin
     const charCode = letter.charCodeAt(0)
     if (charCode >= 65 && charCode < 89) {
       // A-X
-      return String.fromCharCode(charCode + 2) as PrismaCupSize
+      return String.fromCharCode(charCode + 2) as CupSize
     }
-    return 'Z' as PrismaCupSize // Z is the maximum
+    return 'Z' as CupSize // Z is the maximum
   }
 
   return undefined
