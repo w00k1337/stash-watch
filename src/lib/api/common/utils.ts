@@ -17,7 +17,7 @@ export const fetchGraphQL = async <TResult, TVariables>({
   query,
   variables
 }: FetchGraphQLOptions<TVariables>): Promise<TResult> => {
-  logger.debug(
+  logger.trace(
     {
       apiBaseUrl,
       queryPreview: String(query).slice(0, 100) + '...', // Safely convert to string

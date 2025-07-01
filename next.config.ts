@@ -15,7 +15,8 @@ const nextConfig: NextConfig = {
         hostname: '*'
       }
     ]
-  }
+  },
+  serverExternalPackages: ['bullmq', 'pino']
 }
 
 export default nextConfig
