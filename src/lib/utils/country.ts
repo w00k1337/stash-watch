@@ -305,7 +305,8 @@ export const convertCountry = (country: unknown, options: CountryConversionOptio
 
   if (typeof country !== 'string') {
     if (strict) throw new Error(`Country code must be a string, got ${typeof country}`)
-    return returnOriginal ? `[${typeof country}]` : undefined
+    // eslint-disable-next-line @typescript-eslint/no-base-to-string
+    return returnOriginal ? String(country) : undefined
   }
 
   const converted = convertStashCountry(country)

@@ -1,174 +1,104 @@
-import { ConnectionOptions, Job, Queue, QueueEvents, Worker } from 'bullmq'
+import { Queue } from 'bullmq'
 
-import logger from '@/lib/logger'
+import logger from '../logger'
+import { connection } from './config'
+import { ImportStashPerformerJobData, ImportStashPerformerJobResult } from './types'
 
-import { processPerformerImport, processScenesImport } from './processors'
-import { PerformerImportJobData, PerformerImportJobResult, ScenesImportJobData, ScenesImportJobResult } from './types'
+export const QUEUE_NAME_STASH_PERFORMER_IMPORT = 'stash-performer-import'
+export const JOB_NAME_IMPORT_STASH_PERFORMER = 'import-stash-performer'
 
-class QueueManager {
-  private options: ConnectionOptions
-  private performerImportQueue!: Queue<PerformerImportJobData, PerformerImportJobResult>
-  private performerImportWorker!: Worker<PerformerImportJobData, PerformerImportJobResult>
-  private scenesImportQueue!: Queue<ScenesImportJobData, ScenesImportJobResult>
-  private scenesImportWorker!: Worker<ScenesImportJobData, ScenesImportJobResult>
-  private performerImportQueueEvents!: QueueEvents
-  private scenesImportQueueEvents!: QueueEvents
-  private isInitialized = false
+export class QueueManager {
+  private readonly performerImportQueue: Queue<ImportStashPerformerJobData, ImportStashPerformerJobResult>
+  private static instance: QueueManager | undefined
 
-  constructor(options: ConnectionOptions) {
-    this.options = options
+  private constructor() {
+    this.performerImportQueue = new Queue<ImportStashPerformerJobData, ImportStashPerformerJobResult>(
+      QUEUE_NAME_STASH_PERFORMER_IMPORT,
+      {
+        connection,
+        defaultJobOptions: {
+          removeOnComplete: true,
+          removeOnFail: 10 // Keep failed jobs for debugging, but limit to 10
+        }
+      }
+    )
   }
 
-  async initialize(): Promise<void> {
-    if (this.isInitialized) {
-      logger.warn('QueueManager already initialized')
+  static defaultManager(): QueueManager {
+    QueueManager.instance ??= new QueueManager()
+
+    return QueueManager.instance
+  }
+
+  async importStashPerformers(ids: number[]): Promise<void> {
+    logger.debug({ count: ids.length }, 'Adding Stash performers to import queue')
+
+    // Check for existing jobs to avoid duplicates
+    const existingJobs = await this.performerImportQueue.getJobs(['waiting', 'active', 'delayed'])
+    const existingStashIds = new Set(existingJobs.map(job => job.data.stashId))
+
+    const newIds = ids.filter(id => !existingStashIds.has(id))
+
+    if (newIds.length === 0) {
+      logger.debug('All performers already in queue, skipping')
       return
     }
 
-    logger.info('Initializing QueueManager')
-
-    const defaultJobOptions = {
-      attempts: 3,
-      backoff: {
-        type: 'exponential',
-        delay: 2000
-      },
-      removeOnComplete: 100,
-      removeOnFail: 50
+    if (newIds.length < ids.length) {
+      logger.debug({ skipped: ids.length - newIds.length, added: newIds.length }, 'Some performers already in queue')
     }
 
-    // Create queues
-    this.performerImportQueue = new Queue('performer-import', {
-      connection: this.options,
-      defaultJobOptions
-    })
+    const jobs = await this.performerImportQueue.addBulk(
+      newIds.map(id => ({
+        name: JOB_NAME_IMPORT_STASH_PERFORMER,
+        data: { stashId: id },
+        opts: {
+          jobId: `${JOB_NAME_IMPORT_STASH_PERFORMER}-${String(id)}`,
+          delay: 1000, // 1 second delay to prevent immediate duplicate processing
+          attempts: 3, // Retry failed jobs up to 3 times
+          backoff: {
+            type: 'exponential',
+            delay: 2000 // Start with 2 seconds, then exponential backoff
+          }
+        }
+      }))
+    )
 
-    this.scenesImportQueue = new Queue('scenes-import', {
-      connection: this.options,
-      defaultJobOptions
-    })
-
-    // Create queue events
-    this.performerImportQueueEvents = new QueueEvents(this.performerImportQueue.name, { connection: this.options })
-    this.scenesImportQueueEvents = new QueueEvents(this.scenesImportQueue.name, { connection: this.options })
-
-    // Create workers
-    this.performerImportWorker = new Worker(this.performerImportQueue.name, processPerformerImport, {
-      connection: this.options,
-      concurrency: 5 // Process up to 5 jobs concurrently
-    })
-
-    this.scenesImportWorker = new Worker(this.scenesImportQueue.name, processScenesImport, {
-      connection: this.options,
-      concurrency: 3 // Process up to 3 jobs concurrently
-    })
-
-    // Set up event handlers
-    this.performerImportQueueEvents.on('completed', (jobId, result) => {
-      logger.info({ jobId, result }, 'Job completed')
-    })
-    this.performerImportQueueEvents.on('failed', (jobId, error) => {
-      logger.error({ jobId, error }, 'Job failed')
-    })
-
-    // Wait a moment to ensure connections are established
-    await new Promise(resolve => setTimeout(resolve, 100))
-
-    this.isInitialized = true
-    logger.info('QueueManager initialized successfully')
+    logger.debug({ count: jobs.length }, 'Added Stash performers to import queue')
   }
 
   async close(): Promise<void> {
-    if (!this.isInitialized) {
-      logger.warn('QueueManager not initialized, nothing to close')
-      return
-    }
+    await this.performerImportQueue.close()
 
-    logger.info('Closing QueueManager')
-
-    try {
-      // Close workers first
-      await Promise.all([this.performerImportWorker.close(), this.scenesImportWorker.close()])
-
-      // Close queues
-      await Promise.all([
-        this.performerImportQueue.close(),
-        this.scenesImportQueue.close(),
-        this.performerImportQueueEvents.close(),
-        this.scenesImportQueueEvents.close()
-      ])
-
-      this.isInitialized = false
-      logger.info('QueueManager closed successfully')
-    } catch (error) {
-      logger.error({ error }, 'Error closing QueueManager')
-      throw error
-    }
+    QueueManager.instance = undefined
   }
 
-  addPerformerImportJob = async (
-    performerStashId: number
-  ): Promise<Job<PerformerImportJobData, PerformerImportJobResult>> => {
-    if (!this.isInitialized) {
-      throw new Error('QueueManager not initialized. Call initialize() first.')
-    }
-
-    logger.debug({ performerStashId }, 'Adding performer import job')
-
-    const job = await this.performerImportQueue.add('performer-import', { performerStashId })
-
-    logger.debug({ jobId: job.id }, 'Performer import job added')
-    return job
-  }
-
-  addScenesImportJob = async (data: ScenesImportJobData): Promise<Job<ScenesImportJobData, ScenesImportJobResult>> => {
-    if (!this.isInitialized) {
-      throw new Error('QueueManager not initialized. Call initialize() first.')
-    }
-
-    logger.debug({ data }, 'Adding scenes import job')
-
-    const job = await this.scenesImportQueue.add('scenes-import', data)
-
-    logger.debug({ jobId: job.id }, 'Scenes import job added')
-    return job
-  }
-
-  async getQueueStats(): Promise<{
-    performerImport: Record<string, number>
-    scenesImport: Record<string, number>
+  async getQueueStatus(): Promise<{
+    waiting: number
+    active: number
+    completed: number
+    failed: number
+    delayed: number
   }> {
-    if (!this.isInitialized) {
-      throw new Error('QueueManager not initialized. Call initialize() first.')
-    }
+    const [waiting, active, completed, failed, delayed] = await Promise.all([
+      this.performerImportQueue.getWaiting(),
+      this.performerImportQueue.getActive(),
+      this.performerImportQueue.getCompleted(),
+      this.performerImportQueue.getFailed(),
+      this.performerImportQueue.getDelayed()
+    ])
 
     return {
-      performerImport: await this.performerImportQueue.getJobCounts(),
-      scenesImport: await this.scenesImportQueue.getJobCounts()
+      waiting: waiting.length,
+      active: active.length,
+      completed: completed.length,
+      failed: failed.length,
+      delayed: delayed.length
     }
   }
-}
 
-// Singleton instance
-let queueManagerInstance: QueueManager | null = null
-
-export const createQueueManager = (connectionOptions: ConnectionOptions): QueueManager => {
-  queueManagerInstance ??= new QueueManager(connectionOptions)
-  return queueManagerInstance
-}
-
-export const getQueueManager = (): QueueManager | null => {
-  return queueManagerInstance
-}
-
-export const closeQueueManager = async (): Promise<void> => {
-  if (queueManagerInstance) {
-    await queueManagerInstance.close()
-    queueManagerInstance = null
+  async clearQueue(): Promise<void> {
+    await this.performerImportQueue.obliterate()
+    logger.info('Cleared all jobs from performer import queue')
   }
-}
-
-// For testing purposes
-export const resetQueueManager = (): void => {
-  queueManagerInstance = null
 }

@@ -14,7 +14,8 @@ export const env = createEnv({
     STASHDB_BASE_URL: z.string().url().default('https://stashdb.org'),
     STASHDB_API_KEY: z.string(),
     THEPORNDB_BASE_URL: z.string().url().default('https://theporndb.net'),
-    THEPORNDB_API_KEY: z.string()
+    THEPORNDB_API_KEY: z.string(),
+    WEBHOOK_SECRET: z.string()
   },
   experimental__runtimeEnv: process.env
 })

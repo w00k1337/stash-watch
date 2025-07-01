@@ -13,6 +13,8 @@ import {
 import { fetchGraphQL } from '../common/utils'
 import { Performer, performerSchema, Scene, sceneSchema } from './schema'
 
+export * from './schema'
+
 export const getPerformers = async (): Promise<Performer[]> => {
   const query = graphql(`
     query AllPerformers {
