@@ -1,33 +1,58 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { z } from 'zod'
 
-import { env } from '@/env/server'
 import { getPerformers as getStashPerformers } from '@/lib/api/stash'
 import logger from '@/lib/logger'
 import { QueueManager } from '@/lib/queue'
+import { validateWebhookAuth } from '@/lib/utils/webhook-auth'
 
-const bodySchema = z.object({
-  secret: z.string()
-})
+/**
+ * Response structure for the performer import webhook
+ */
+interface PerformerImportWebhookResponse {
+  /** Whether the webhook processing was successful */
+  success: boolean
+  /** Number of performers queued for import (only present on success) */
+  performersQueued?: number
+  /** Error message (only present on failure) */
+  error?: string
+}
 
-export const POST = async (request: NextRequest): Promise<NextResponse> => {
-  const unparsedBody = await (request.json() as unknown)
-  const { secret } = bodySchema.parse(unparsedBody)
-
-  if (secret !== env.WEBHOOK_SECRET) {
-    logger.error({ secret }, 'Unauthorized')
-    return NextResponse.json({ message: 'Unauthorized' }, { status: 401 })
-  }
-
+/**
+ * Webhook endpoint for importing performers from Stash
+ *
+ * This endpoint:
+ * 1. Validates the webhook authentication
+ * 2. Fetches all performers from Stash
+ * 3. Queues each performer for import processing
+ *
+ * @param request - The incoming webhook request
+ * @returns Promise resolving to a NextResponse with import status
+ */
+export const POST = async (request: NextRequest): Promise<NextResponse<PerformerImportWebhookResponse>> => {
   try {
-    const stashPerformers = await getStashPerformers()
-    logger.debug({ count: stashPerformers.length }, 'Fetched Stash performers')
+    // Validate webhook authentication
+    const authResult = validateWebhookAuth(request)
+    if (!authResult.success && authResult.response) {
+      return authResult.response
+    }
 
-    await QueueManager.defaultManager().importStashPerformers(stashPerformers.map(({ id }) => id))
+    // Fetch all performers from Stash
+    const performers = await getStashPerformers()
+    logger.info({ count: performers.length }, 'Fetched performers from Stash')
 
-    return NextResponse.json({ message: 'OK' })
+    if (performers.length > 0) {
+      // Extract performer IDs for queuing
+      const performerIds = performers.map(({ id }) => id)
+
+      // Queue performers for background import processing
+      await QueueManager.defaultManager().addImportStashPerformerJobs(performerIds)
+
+      logger.info({ count: performerIds.length }, 'Queued performers for import')
+    }
+
+    return NextResponse.json({ success: true, performersQueued: performers.length })
   } catch (error) {
-    logger.error({ error }, 'Failed to import performers')
-    return NextResponse.json({ message: 'Internal Server Error' }, { status: 500 })
+    logger.error({ error }, 'Failed to process performer import webhook')
+    return NextResponse.json({ success: false, error: 'Something went wrong' }, { status: 500 })
   }
 }

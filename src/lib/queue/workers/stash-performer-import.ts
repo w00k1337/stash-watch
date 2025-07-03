@@ -1,36 +1,60 @@
-import { Worker } from 'bullmq'
-
 import { getPerformer } from '@/lib/api/stash'
 import logger from '@/lib/logger'
 import prisma from '@/lib/prisma'
-import { convertStashPerformer } from '@/lib/utils/performer'
+import { convertStashPerformer } from '@/lib/utils'
 
 import { QUEUE_NAME_STASH_PERFORMER_IMPORT } from '..'
-import { connection } from '../config'
 import type { ImportStashPerformerJobData, ImportStashPerformerJobResult } from '../types'
+import { BaseWorker } from './base'
 
-export class StashPerformerImportWorker {
+/**
+ * Worker for importing performers from Stash into the local database
+ *
+ * This worker processes background jobs that import performer data from the Stash API.
+ * It handles both creating new performers and updating existing ones, with proper
+ * data conversion and validation. The worker uses a singleton pattern to ensure
+ * only one instance runs at a time.
+ *
+ * Features:
+ * - Singleton pattern for single instance management
+ * - Automatic duplicate detection and upsert logic
+ * - Data conversion from Stash format to database format
+ * - Comprehensive logging and error handling
+ * - Graceful shutdown handling
+ */
+export class StashPerformerImportWorker extends BaseWorker<ImportStashPerformerJobData, ImportStashPerformerJobResult> {
   private static instance: StashPerformerImportWorker | undefined
-  private worker: Worker<ImportStashPerformerJobData, ImportStashPerformerJobResult> | undefined
-  private isRunning = false
 
   private constructor() {
-    // Private constructor to prevent direct instantiation
+    super()
   }
 
+  /**
+   * Returns the singleton instance of the Stash performer import worker
+   *
+   * Creates a new instance if one doesn't exist, ensuring only one
+   * worker instance exists throughout the application lifecycle.
+   *
+   * @returns The singleton StashPerformerImportWorker instance
+   */
   static getInstance(): StashPerformerImportWorker {
     StashPerformerImportWorker.instance ??= new StashPerformerImportWorker()
     return StashPerformerImportWorker.instance
   }
 
+  /**
+   * Starts the Stash performer import worker
+   *
+   * This method initializes the worker to process jobs from the Stash performer
+   * import queue. Each job processes a single performer by:
+   * 1. Checking if the performer already exists in the database
+   * 2. Fetching performer data from the Stash API
+   * 3. Converting the data to the internal format
+   * 4. Upserting the performer in the database
+   * 5. Returning the processing result
+   */
   run(): void {
-    if (this.isRunning || this.worker) {
-      return
-    }
-
-    this.isRunning = true
-
-    this.worker = new Worker<ImportStashPerformerJobData, ImportStashPerformerJobResult>(
+    this.runWorker(
       QUEUE_NAME_STASH_PERFORMER_IMPORT,
       async job => {
         const { stashId } = job.data
@@ -49,6 +73,7 @@ export class StashPerformerImportWorker {
           )
         }
 
+        // Fetch performer data from Stash API
         const stashPerformer = await getPerformer(stashId)
 
         if (!stashPerformer) {
@@ -56,8 +81,10 @@ export class StashPerformerImportWorker {
           throw new Error(`Stash performer not found for stashId: ${String(stashId)}`)
         }
 
+        // Convert Stash performer data to database format
         const { slug, ...convertedPerformer } = convertStashPerformer(stashPerformer)
 
+        // Upsert performer in database (create if new, update if exists)
         const performer = await prisma.$transaction(async tx => {
           return tx.performer.upsert({
             where: { stashId: stashPerformer.id },
@@ -74,54 +101,12 @@ export class StashPerformerImportWorker {
           name: performer.name
         }
       },
-      {
-        connection,
-        concurrency: 5
-      }
+      'Stash performer import'
     )
-
-    this.worker.on('completed', (job, result) => {
-      logger.info(
-        { jobId: job.id, stashId: job.data.stashId, slug: result.slug, name: result.name },
-        'Successfully imported Stash performer'
-      )
-    })
-
-    this.worker.on('failed', (job, error) => {
-      logger.error(
-        { jobId: job?.id, stashId: job?.data.stashId, error: error.message },
-        'Failed to import Stash performer'
-      )
-    })
-
-    this.worker.on('error', error => {
-      logger.error({ error }, 'Stash performer import worker error')
-    })
-
-    this.worker.on('stalled', jobId => {
-      logger.warn({ jobId }, 'Stash performer import job stalled')
-    })
-
-    this.worker.on('closed', () => {
-      logger.info('Stash performer import worker closed')
-      this.isRunning = false
-    })
-  }
-
-  cleanup(): void {
-    if (this.worker) {
-      this.worker.removeAllListeners()
-      void this.worker.close()
-      this.worker = undefined
-      this.isRunning = false
-    }
-  }
-
-  isActive(): boolean {
-    return this.isRunning && this.worker !== undefined
   }
 }
 
+// Handle graceful shutdown
 process.on('SIGTERM', () => {
   StashPerformerImportWorker.getInstance().cleanup()
 })
