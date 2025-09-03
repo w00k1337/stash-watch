@@ -24,7 +24,7 @@
     "@prisma/client": "6.15.0",
     "@t3-oss/env-nextjs": "0.13.8",
     "@tailwindcss/postcss": "4.1.12",
-    "bullmq": "5.58.1",
+    "bullmq": "5.58.4",
     "date-fns": "4.1.0",
     "dotenv": "17.2.1",
     "graphql": "16.11.0",
