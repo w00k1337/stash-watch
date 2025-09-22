@@ -39,7 +39,7 @@
     "server-only": "0.0.1",
     "slugify": "1.6.6",
     "tailwindcss": "4.1.13",
-    "zod": "3.25.75"
+    "zod": "4.1.11"
   },
   "devDependencies": {
     "@commitlint/cli": "19.8.1",
