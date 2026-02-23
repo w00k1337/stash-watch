@@ -68,7 +68,7 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.head_ref }}
 
@@ -78,7 +78,7 @@ jobs:
           version: '10.12.1'
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '22.14.0'
           cache: 'pnpm'
@@ -87,7 +87,7 @@ jobs:
         run: pnpm install
 
       - name: Restore Next.js Cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.pnpm
