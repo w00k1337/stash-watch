@@ -24,7 +24,7 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Validate PR Title with Conventional Commit
         uses: CondeNast/conventional-pull-request-action@v0.2.0
